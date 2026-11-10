@@ -1,0 +1,48 @@
+<!DOCTYPE html><html lang="sw"><head><meta charset="utf-8"><title>G Victoria Shop - Admin</title>
+<meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="style.css"></head><body>
+<header><h1>🔐 Admin · G Victoria Shop</h1><button class="g" id="out" style="display:none" onclick="firebase.auth().signOut()">Toka</button></header><div id="app"></div>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="config.js"></script>
+<script>
+firebase.initializeApp(firebaseConfig);const db=firebase.firestore(),auth=firebase.auth();
+let products=[],settings={},edit=null,unsub=[];const app=document.getElementById('app');
+const money=n=>'TSh '+Number(n||0).toLocaleString('en-US');
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const say=t=>{const m=document.getElementById('msg');if(m)m.textContent=t};
+auth.onAuthStateChanged(u=>{
+  unsub.forEach(f=>f());unsub=[];
+  if(!u||u.email!==ADMIN_EMAIL){document.getElementById('out').style.display=u?'block':'none';login(u?'Akaunti hii hairuhusiwi.':'');return}
+  document.getElementById('out').style.display='block';
+  unsub.push(db.collection('products').onSnapshot(s=>{products=s.docs.map(d=>({id:d.id,...d.data()}));admin()}));
+  unsub.push(db.doc('settings/shop').onSnapshot(s=>{settings=s.data()||{};admin()}));
+});
+function login(err){app.innerHTML=`<div class="pad"><h2>Ingia kama admin</h2><input id="em" type="email" placeholder="Email" value="${ADMIN_EMAIL}"><input id="pw" type="password" placeholder="Password"><button onclick="doLogin()">Ingia</button><p id="msg" class="mu">${err}</p></div>`}
+async function doLogin(){try{await auth.signInWithEmailAndPassword(document.getElementById('em').value.trim(),document.getElementById('pw').value)}catch(e){say('Email au password si sahihi.')}}
+function admin(){
+  const e=edit||{};
+  app.innerHTML=`<div class="pad"><h2>Mipangilio ya duka</h2>
+  <label class="mu">Tangazo / update kwa wateja</label><textarea id="nt" rows="2">${esc(settings.notice)}</textarea>
+  <label class="mu">Namba ya WhatsApp (mf. 255693223291)</label><input id="wa" value="${esc(settings.whatsapp||DEFAULT_WHATSAPP)}">
+  <button onclick="saveSet()">Hifadhi mipangilio</button>
+  <h2>${e.id?'Hariri bidhaa':'Ongeza bidhaa mpya'}</h2>
+  <input id="pn" placeholder="Jina la bidhaa" value="${esc(e.name)}"><input id="pp" type="number" inputmode="numeric" placeholder="Bei (TSh)" value="${esc(e.price)}">
+  ${e.img?`<img src="${e.img}" style="width:100px;border-radius:10px;display:block;margin-bottom:8px">`:''}
+  <label class="mu">Picha ya bidhaa</label><input id="pf" type="file" accept="image/*">
+  <button onclick="saveProd()">${e.id?'Hifadhi mabadiliko':'Ongeza bidhaa'}</button> ${e.id?'<button class="g" onclick="edit=null;admin()">Ghairi</button>':''}
+  <p id="msg" class="mu"></p><h2>Bidhaa zote (${products.length})</h2>`+
+  products.map(p=>`<div class="it"><span>${esc(p.name)} · <b>${money(p.price)}</b>${p.available===false?' <span class="mu">(imefichwa)</span>':''}</span><span class="row" style="white-space:nowrap"><button class="g" onclick="ed('${p.id}')">Hariri</button><button class="g" onclick="tog('${p.id}')">${p.available===false?'Onyesha':'Ficha'}</button><button class="g" onclick="del('${p.id}')">🗑</button></span></div>`).join('')+'</div>';
+}
+function shrink(f){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>{const i=new Image();i.onload=()=>{const k=Math.min(1,700/Math.max(i.width,i.height)),c=document.createElement('canvas');c.width=i.width*k;c.height=i.height*k;c.getContext('2d').drawImage(i,0,0,c.width,c.height);res(c.toDataURL('image/jpeg',.72))};i.onerror=rej;i.src=r.result};r.onerror=rej;r.readAsDataURL(f)})}
+async function saveSet(){try{await db.doc('settings/shop').set({notice:document.getElementById('nt').value,whatsapp:document.getElementById('wa').value});say('Imehifadhiwa ✓')}catch(e){say('Imeshindikana: '+e.message)}}
+async function saveProd(){
+  const name=document.getElementById('pn').value.trim(),price=Number(document.getElementById('pp').value);if(!name||!price){say('Weka jina na bei.');return}
+  const d={name,price,available:edit?edit.available!==false:true,img:edit?.img||''};
+  try{const f=document.getElementById('pf').files[0];if(f){say('Inapakia picha…');d.img=await shrink(f)}
+    await db.doc('products/'+(edit?.id||'p'+Date.now())).set(d);edit=null;admin();say('Imehifadhiwa ✓')}catch(e){say('Imeshindikana: '+e.message)}
+}
+function ed(id){edit=products.find(p=>p.id==id);admin();scrollTo(0,0)}
+async function tog(id){const p=products.find(x=>x.id==id);await db.doc('products/'+id).update({available:p.available===false})}
+async function del(id){if(confirm('Futa bidhaa hii?'))await db.doc('products/'+id).delete()}
+</script></body></html>
